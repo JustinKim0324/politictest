@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>심층 정치 이념 테스트</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; }
+        .progress-bar-fill { transition: width 0.3s ease-in-out; }
+        .result-bar-inner {
+            transition: width 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            animation: slide-in 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+        }
+        @keyframes slide-in {
+            0% { width: 0%; }
+            100% { width: var(--target-width); }
+        }
+        .fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .content-box {
+            background-color: #f8fafc; /* light mode */
+            border: 1px solid #e2e8f0;
+        }
+        .dark .content-box {
+            background-color: #1f2a37; /* dark mode */
+            border: 1px solid #374151;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-300">
+
+    <div class="container mx-auto max-w-4xl p-4 md:p-8">
+        <div id="start-screen" class="text-center">
+            <h1 class="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4">심층 정치 이념 테스트</h1>
+            <p class="text-lg text-gray-600 dark:text-gray-300 mb-8">당신의 정치적 신념을 150개 이상의 질문으로 정밀하게 분석합니다.</p>
+            <button id="start-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition-transform transform hover:scale-105">
+                테스트 시작
+            </button>
+        </div>
+
+        <div id="quiz-screen" class="hidden">
+            <div class="mb-6">
+                <p id="question-number" class="text-center text-indigo-500 dark:text-indigo-400 font-semibold mb-2"></p>
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+                    <div id="progress-bar" class="bg-indigo-600 h-2.5 rounded-full progress-bar-fill" style="width: 0%"></div>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg">
+                <h2 id="question-text" class="text-2xl font-bold text-center mb-8 h-24 flex items-center justify-center"></h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button class="answer-btn bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-5 rounded-lg transition-transform transform hover:scale-105" data-value="2">강력히 동의</button>
+                    <button class="answer-btn bg-green-400 hover:bg-green-500 text-white font-semibold py-3 px-5 rounded-lg transition-transform transform hover:scale-105" data-value="1">동의</button>
+                    <button class="answer-btn bg-gray-400 hover:bg-gray-500 text-white font-semibold py-3 px-5 rounded-lg transition-transform transform hover:scale-105" data-value="0">중립/모름</button>
+                    <button class="answer-btn bg-red-400 hover:bg-red-500 text-white font-semibold py-3 px-5 rounded-lg transition-transform transform hover:scale-105" data-value="-1">반대</button>
+                    <button class="answer-btn bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-5 rounded-lg transition-transform transform hover:scale-105" data-value="-2">강력히 반대</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="result-screen" class="hidden fade-in">
+            <div class="text-center mb-10">
+                <h1 class="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-3">분석 결과: <span id="result-title" class="text-indigo-500"></span></h1>
+                <p class="text-lg text-gray-600 dark:text-gray-400">당신의 정치 이념 좌표와 가장 일치하는 결과입니다.</p>
+            </div>
+            
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+                <h2 class="text-2xl font-bold mb-6 text-center">정치 이념 4분면</h2>
+                <div class="w-full aspect-square">
+                    <canvas id="compass-chart"></canvas>
+                </div>
+            </div>
+
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+                <h2 class="text-2xl font-bold mb-6 text-center">나의 정치 이념 축</h2>
+                <div class="space-y-5">
+                    <div>
+                        <div class="flex justify-between mb-1 text-lg font-semibold">
+                            <span class="text-blue-500">평등 (경제적 좌파)</span>
+                            <span class="text-red-500">시장 (경제적 우파)</span>
+                        </div>
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-5 relative">
+                            <div class="bg-gray-400 h-5 w-0.5 absolute top-0 left-1/2 -ml-0.25"></div>
+                            <div id="econ-bar" class="h-5 rounded-full result-bar-inner"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-1 text-lg font-semibold">
+                            <span class="text-green-500">개입 (권위주의)</span>
+                            <span class="text-yellow-500">자유 (자유지상주의)</span>
+                        </div>
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-5 relative">
+                            <div class="bg-gray-400 h-5 w-0.5 absolute top-0 left-1/2 -ml-0.25"></div>
+                            <div id="stat-bar" class="h-5 rounded-full result-bar-inner"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-1 text-lg font-semibold">
+                            <span class="text-purple-500">진보</span>
+                            <span class="text-orange-500">전통</span>
+                        </div>
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-5 relative">
+                             <div class="bg-gray-400 h-5 w-0.5 absolute top-0 left-1/2 -ml-0.25"></div>
+                            <div id="scty-bar" class="h-5 rounded-full result-bar-inner"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-1 text-lg font-semibold">
+                            <span class="text-cyan-500">세계</span>
+                            <span class="text-pink-500">국가</span>
+                        </div>
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-5 relative">
+                            <div class="bg-gray-400 h-5 w-0.5 absolute top-0 left-1/2 -ml-0.25"></div>
+                            <div id="dipl-bar" class="h-5 rounded-full result-bar-inner"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="result-details" class="space-y-6">
+                <div class="content-box p-6 rounded-lg">
+                    <h3 class="text-xl font-bold mb-3 text-indigo-500">주요 특징</h3>
+                    <p id="result-description" class="text-base leading-relaxed"></p>
+                </div>
+                <div class="content-box p-6 rounded-lg">
+                    <h3 class="text-xl font-bold mb-3 text-indigo-500">대표 인물</h3>
+                    <ul id="result-figures" class="list-disc list-inside space-y-1"></ul>
+                </div>
+                <div class="content-box p-6 rounded-lg">
+                    <h3 class="text-xl font-bold mb-3 text-indigo-500">추천 도서</h3>
+                    <ul id="result-readings" class="list-disc list-inside space-y-1"></ul>
+                </div>
+                <div class="content-box p-6 rounded-lg">
+                    <h3 class="text-xl font-bold mb-3 text-indigo-500">관련 미디어 / 싱크탱크</h3>
+                    <ul id="result-media" class="list-disc list-inside space-y-1"></ul>
+                </div>
+                <div class="content-box p-6 rounded-lg">
+                    <h3 class="text-xl font-bold mb-3 text-indigo-500">관련 커뮤니티 / 채널</h3>
+                    <ul id="result-communities" class="list-disc list-inside space-y-1"></ul>
+                </div>
+            </div>
+
+            <div class="text-center mt-10">
+                <button id="restart-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-8 rounded-lg text-lg transition-transform transform hover:scale-105">
+                    테스트 다시하기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="questions.js"></script>
+    <script src="ideologies.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
+
