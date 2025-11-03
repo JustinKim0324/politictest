@@ -15,7 +15,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentQuestionIndex = 0;
     let scores = { econ: 0, stat: 0, scty: 0, dipl: 0 };
     const maxScores = { econ: 0, stat: 0, scty: 0, dipl: 0 };
-    let compassChart = null;
 
     // Event Listeners
     startBtn.addEventListener('click', startQuiz);
@@ -24,9 +23,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function startQuiz() {
         startScreen.classList.add('hidden');
         quizScreen.classList.remove('hidden');
-        if (compassChart) {
-            compassChart.destroy(); // Destroy previous chart instance
-        }
         calculateMaxScores();
         showQuestion();
     }
@@ -146,148 +142,232 @@ document.addEventListener('DOMContentLoaded', () => {
         bar.style.width = `${percentage}%`;
     }
 
-    // Compute convex hull (Graham scan algorithm simplified for 2D)
-    function convexHull(points) {
-        if (points.length < 3) return points;
+    // Generate color for each ideology based on political position
+    function getIdeologyColor(ideology) {
+        const econ = ideology.scores.econ;
+        const stat = ideology.scores.stat;
+        const scty = ideology.scores.scty;
 
-        const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+        // Determine color based on quadrant and characteristics
+        let hue, saturation = 65, lightness = 65;
 
-        points.sort((a, b) => a.x !== b.x ? a.x - b.x : a.y - b.y);
-
-        const lower = [];
-        for (let i = 0; i < points.length; i++) {
-            while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], points[i]) <= 0) {
-                lower.pop();
+        if (econ > 30) {
+            // Left (economic equality)
+            if (stat > 30) {
+                hue = 340; // Auth-left: Red-pink
+            } else if (stat < -30) {
+                hue = 150; // Lib-left: Green
+            } else {
+                hue = 210; // Center-left: Blue
             }
-            lower.push(points[i]);
+        } else if (econ < -30) {
+            // Right (economic market)
+            if (stat > 30) {
+                hue = 270; // Auth-right: Purple
+            } else if (stat < -30) {
+                hue = 45; // Lib-right: Gold
+            } else {
+                hue = 20; // Center-right: Orange
+            }
+        } else {
+            // Center
+            if (stat > 30) {
+                hue = 300; // Auth-center: Violet
+            } else if (stat < -30) {
+                hue = 120; // Lib-center: Light green
+            } else {
+                hue = 0; // True center: Gray
+                saturation = 20;
+            }
         }
 
-        const upper = [];
-        for (let i = points.length - 1; i >= 0; i--) {
-            while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], points[i]) <= 0) {
-                upper.pop();
-            }
-            upper.push(points[i]);
-        }
-
-        lower.pop();
-        upper.pop();
-        return lower.concat(upper);
+        return `hsla(${hue}, ${saturation}%, ${lightness}%, 0.5)`;
     }
 
-    // Draw the 4-quadrant compass chart with regions
+    // Draw the political compass with Voronoi regions
     function drawCompassChart(userScores) {
-        const ctx = compassChartCanvas.getContext('2d');
+        const canvas = compassChartCanvas;
+        const ctx = canvas.getContext('2d');
 
-        // Group ideologies by clusters for region visualization
-        const groups = {
-            "좌파 / 진보": { color: "rgba(59, 130, 246, 0.2)", ideologies: [] },
-            "우파 / 보수": { color: "rgba(239, 68, 68, 0.2)", ideologies: [] },
-            "자유지상 / 아나키즘": { color: "rgba(34, 197, 94, 0.2)", ideologies: [] },
-            "권위주의": { color: "rgba(168, 85, 247, 0.2)", ideologies: [] }
-        };
+        // Set canvas size
+        const container = canvas.parentElement;
+        const size = Math.min(container.clientWidth, 600);
+        canvas.width = size;
+        canvas.height = size;
 
-        // Categorize ideologies into groups based on scores
-        ideologies.forEach(ideology => {
-            const s = ideology.scores;
-            if (s.econ > 0 && s.scty > 0) groups["좌파 / 진보"].ideologies.push({ x: s.econ, y: s.stat, name: ideology.name });
-            else if (s.econ < 0 && s.scty < 0) groups["우파 / 보수"].ideologies.push({ x: s.econ, y: s.stat, name: ideology.name });
-            else if (s.stat < -50) groups["자유지상 / 아나키즘"].ideologies.push({ x: s.econ, y: s.stat, name: ideology.name });
-            else groups["권위주의"].ideologies.push({ x: s.econ, y: s.stat, name: ideology.name });
+        const padding = 60;
+        const chartWidth = size - padding * 2;
+        const chartHeight = size - padding * 2;
+
+        // Helper function to convert political coordinates to canvas coordinates
+        function toCanvasX(politicalX) {
+            return padding + ((politicalX + 100) / 200) * chartWidth;
+        }
+
+        function toCanvasY(politicalY) {
+            return padding + ((100 - politicalY) / 200) * chartHeight;
+        }
+
+        // Prepare points for Voronoi
+        const points = ideologies.map(ideology => [
+            ideology.scores.econ,
+            ideology.scores.stat
+        ]);
+
+        // Create Voronoi diagram using d3-delaunay
+        const delaunay = d3.Delaunay.from(points);
+        const voronoi = delaunay.voronoi([-100, -100, 100, 100]);
+
+        // Clear canvas
+        ctx.clearRect(0, 0, size, size);
+
+        // Draw Voronoi cells
+        ideologies.forEach((ideology, i) => {
+            const cell = voronoi.cellPolygon(i);
+            if (!cell) return;
+
+            ctx.fillStyle = getIdeologyColor(ideology);
+            ctx.strokeStyle = 'rgba(100, 100, 100, 0.4)';
+            ctx.lineWidth = 1;
+
+            ctx.beginPath();
+            cell.forEach((point, j) => {
+                const x = toCanvasX(point[0]);
+                const y = toCanvasY(point[1]);
+                if (j === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
         });
 
-        const datasets = [];
+        // Draw axis lines
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+        ctx.lineWidth = 2;
 
-        // Add regions for each group
-        for (const [groupName, group] of Object.entries(groups)) {
-            const hull = convexHull(group.ideologies);
-            if (hull.length > 2) {
-                datasets.push({
-                    label: groupName,
-                    data: hull,
-                    backgroundColor: group.color,
-                    borderColor: group.color.replace("0.2", "0.6"),
-                    borderWidth: 1,
-                    fill: true,
-                    pointRadius: 0
+        // Vertical axis (x=0)
+        ctx.beginPath();
+        ctx.moveTo(toCanvasX(0), toCanvasY(-100));
+        ctx.lineTo(toCanvasX(0), toCanvasY(100));
+        ctx.stroke();
+
+        // Horizontal axis (y=0)
+        ctx.beginPath();
+        ctx.moveTo(toCanvasX(-100), toCanvasY(0));
+        ctx.lineTo(toCanvasX(100), toCanvasY(0));
+        ctx.stroke();
+
+        // Draw axis labels
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 12px "Noto Sans KR", sans-serif';
+        ctx.textAlign = 'center';
+
+        // X-axis labels
+        ctx.fillText('평등 (경제적 좌파)', toCanvasX(70), toCanvasY(-100) - 10);
+        ctx.fillText('시장 (경제적 우파)', toCanvasX(-70), toCanvasY(-100) - 10);
+
+        // Y-axis labels
+        ctx.save();
+        ctx.translate(toCanvasX(-100) - 30, toCanvasY(60));
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText('개입 (권위주의)', 0, 0);
+        ctx.restore();
+
+        ctx.save();
+        ctx.translate(toCanvasX(-100) - 30, toCanvasY(-60));
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText('자유 (자유지상주의)', 0, 0);
+        ctx.restore();
+
+        // Highlight user's ideology region
+        const userIdeologyIndex = ideologies.findIndex(ideology => {
+            return Math.hypot(
+                userScores.econ - ideology.scores.econ,
+                userScores.stat - ideology.scores.stat
+            ) === Math.min(...ideologies.map(ide =>
+                Math.hypot(
+                    userScores.econ - ide.scores.econ,
+                    userScores.stat - ide.scores.stat
+                )
+            ));
+        });
+
+        if (userIdeologyIndex >= 0) {
+            const cell = voronoi.cellPolygon(userIdeologyIndex);
+            if (cell) {
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
+                ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
+                ctx.lineWidth = 3;
+
+                ctx.beginPath();
+                cell.forEach((point, j) => {
+                    const x = toCanvasX(point[0]);
+                    const y = toCanvasY(point[1]);
+                    if (j === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
                 });
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
             }
         }
 
-        // Add ideology points
-        datasets.push({
-            label: '이념 분포',
-            data: ideologies.map(ideology => ({
-                x: ideology.scores.econ,
-                y: ideology.scores.stat,
-                name: ideology.name
-            })),
-            backgroundColor: 'rgba(107, 114, 128, 0.7)',
-            pointRadius: 6,
-            pointHoverRadius: 8
+        // Draw ideology points and labels
+        ideologies.forEach((ideology, i) => {
+            const x = toCanvasX(ideology.scores.econ);
+            const y = toCanvasY(ideology.scores.stat);
+
+            // Draw point
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw label with truncated name
+            const nameLines = ideology.name.split('/').map(line => line.trim());
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.font = '9px "Noto Sans KR", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // Draw text with background for readability
+            nameLines.forEach((line, lineIndex) => {
+                const lineY = y + 8 + lineIndex * 10;
+                const metrics = ctx.measureText(line);
+
+                // Semi-transparent background
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                ctx.fillRect(
+                    x - metrics.width / 2 - 2,
+                    lineY - 6,
+                    metrics.width + 4,
+                    10
+                );
+
+                // Text
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+                ctx.fillText(line, x, lineY);
+            });
         });
 
-        // Add user point
-        datasets.push({
-            label: '나의 위치',
-            data: [{ x: userScores.econ, y: userScores.stat }],
-            backgroundColor: 'rgba(239, 68, 68, 1)',
-            pointRadius: 9,
-            pointHoverRadius: 11,
-            borderColor: 'rgba(255, 255, 255, 0.9)',
-            borderWidth: 2
-        });
+        // Draw user point
+        const userX = toCanvasX(userScores.econ);
+        const userY = toCanvasY(userScores.stat);
 
-        compassChart = new Chart(ctx, {
-            type: 'scatter',
-            data: {
-                datasets: datasets
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                scales: {
-                    x: {
-                        min: -100,
-                        max: 100,
-                        type: 'linear',
-                        position: 'bottom',
-                        title: {
-                            display: true,
-                            text: '◀ 시장 (경제적 우파) · 평등 (경제적 좌파) ▶',
-                            font: { size: 14, weight: 'bold' }
-                        },
-                        grid: { zeroLineColor: 'rgba(0, 0, 0, 0.5)' }
-                    },
-                    y: {
-                        min: -100,
-                        max: 100,
-                        title: {
-                            display: true,
-                            text: '◀ 자유 (자유지상주의) · 개입 (권위주의) ▶',
-                            font: { size: 14, weight: 'bold' }
-                        },
-                        grid: { zeroLineColor: 'rgba(0, 0, 0, 0.5)' }
-                    }
-                },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const data = context.parsed;
-                                if (context.datasetIndex === datasets.length - 2) { // Ideology dots
-                                    return context.raw.name || '이념';
-                                }
-                                if (context.datasetIndex === datasets.length - 1) { // User dot
-                                    return '나의 위치';
-                                }
-                                return context.dataset.label; // Region
-                            }
-                        }
-                    }
-                },
-            }
-        });
+        ctx.fillStyle = 'rgba(239, 68, 68, 1)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 1)';
+        ctx.lineWidth = 3;
+
+        ctx.beginPath();
+        ctx.arc(userX, userY, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw user label
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 14px "Noto Sans KR", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('나의 위치', userX, userY - 15);
     }
 });
