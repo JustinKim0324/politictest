@@ -186,6 +186,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Draw the political compass with Voronoi regions
     function drawCompassChart(userScores) {
+        console.log('drawCompassChart called with scores:', userScores);
+
         const canvas = compassChartCanvas;
         const ctx = canvas.getContext('2d');
 
@@ -194,6 +196,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const size = Math.min(container.clientWidth, 600);
         canvas.width = size;
         canvas.height = size;
+
+        console.log('Canvas size:', size);
 
         const padding = 60;
         const chartWidth = size - padding * 2;
@@ -208,97 +212,42 @@ document.addEventListener('DOMContentLoaded', () => {
             return padding + ((100 - politicalY) / 200) * chartHeight;
         }
 
+        // Check if d3 is loaded
+        if (typeof d3 === 'undefined') {
+            console.error('d3-delaunay library not loaded!');
+            // Draw error message on canvas
+            ctx.fillStyle = '#000';
+            ctx.font = '16px "Noto Sans KR", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('라이브러리 로딩 오류', size / 2, size / 2);
+            return;
+        }
+
         // Prepare points for Voronoi
         const points = ideologies.map(ideology => [
             ideology.scores.econ,
             ideology.scores.stat
         ]);
 
-        // Create Voronoi diagram using d3-delaunay
-        const delaunay = d3.Delaunay.from(points);
-        const voronoi = delaunay.voronoi([-100, -100, 100, 100]);
+        console.log('Points prepared:', points.length);
 
-        // Clear canvas
-        ctx.clearRect(0, 0, size, size);
+        try {
+            // Create Voronoi diagram using d3-delaunay
+            const delaunay = d3.Delaunay.from(points);
+            const voronoi = delaunay.voronoi([-100, -100, 100, 100]);
+            console.log('Voronoi diagram created successfully');
 
-        // Draw Voronoi cells
-        ideologies.forEach((ideology, i) => {
-            const cell = voronoi.cellPolygon(i);
-            if (!cell) return;
+            // Clear canvas
+            ctx.clearRect(0, 0, size, size);
 
-            ctx.fillStyle = getIdeologyColor(ideology);
-            ctx.strokeStyle = 'rgba(100, 100, 100, 0.4)';
-            ctx.lineWidth = 1;
+            // Draw Voronoi cells
+            ideologies.forEach((ideology, i) => {
+                const cell = voronoi.cellPolygon(i);
+                if (!cell) return;
 
-            ctx.beginPath();
-            cell.forEach((point, j) => {
-                const x = toCanvasX(point[0]);
-                const y = toCanvasY(point[1]);
-                if (j === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-            });
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-        });
-
-        // Draw axis lines
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-        ctx.lineWidth = 2;
-
-        // Vertical axis (x=0)
-        ctx.beginPath();
-        ctx.moveTo(toCanvasX(0), toCanvasY(-100));
-        ctx.lineTo(toCanvasX(0), toCanvasY(100));
-        ctx.stroke();
-
-        // Horizontal axis (y=0)
-        ctx.beginPath();
-        ctx.moveTo(toCanvasX(-100), toCanvasY(0));
-        ctx.lineTo(toCanvasX(100), toCanvasY(0));
-        ctx.stroke();
-
-        // Draw axis labels
-        ctx.fillStyle = '#000';
-        ctx.font = 'bold 12px "Noto Sans KR", sans-serif';
-        ctx.textAlign = 'center';
-
-        // X-axis labels
-        ctx.fillText('평등 (경제적 좌파)', toCanvasX(70), toCanvasY(-100) - 10);
-        ctx.fillText('시장 (경제적 우파)', toCanvasX(-70), toCanvasY(-100) - 10);
-
-        // Y-axis labels
-        ctx.save();
-        ctx.translate(toCanvasX(-100) - 30, toCanvasY(60));
-        ctx.rotate(-Math.PI / 2);
-        ctx.fillText('개입 (권위주의)', 0, 0);
-        ctx.restore();
-
-        ctx.save();
-        ctx.translate(toCanvasX(-100) - 30, toCanvasY(-60));
-        ctx.rotate(-Math.PI / 2);
-        ctx.fillText('자유 (자유지상주의)', 0, 0);
-        ctx.restore();
-
-        // Highlight user's ideology region
-        const userIdeologyIndex = ideologies.findIndex(ideology => {
-            return Math.hypot(
-                userScores.econ - ideology.scores.econ,
-                userScores.stat - ideology.scores.stat
-            ) === Math.min(...ideologies.map(ide =>
-                Math.hypot(
-                    userScores.econ - ide.scores.econ,
-                    userScores.stat - ide.scores.stat
-                )
-            ));
-        });
-
-        if (userIdeologyIndex >= 0) {
-            const cell = voronoi.cellPolygon(userIdeologyIndex);
-            if (cell) {
-                ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
-                ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
-                ctx.lineWidth = 3;
+                ctx.fillStyle = getIdeologyColor(ideology);
+                ctx.strokeStyle = 'rgba(100, 100, 100, 0.4)';
+                ctx.lineWidth = 1;
 
                 ctx.beginPath();
                 cell.forEach((point, j) => {
@@ -310,64 +259,145 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.closePath();
                 ctx.fill();
                 ctx.stroke();
-            }
-        }
-
-        // Draw ideology points and labels
-        ideologies.forEach((ideology, i) => {
-            const x = toCanvasX(ideology.scores.econ);
-            const y = toCanvasY(ideology.scores.stat);
-
-            // Draw point
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            ctx.beginPath();
-            ctx.arc(x, y, 3, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Draw label with truncated name
-            const nameLines = ideology.name.split('/').map(line => line.trim());
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-            ctx.font = '9px "Noto Sans KR", sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-
-            // Draw text with background for readability
-            nameLines.forEach((line, lineIndex) => {
-                const lineY = y + 8 + lineIndex * 10;
-                const metrics = ctx.measureText(line);
-
-                // Semi-transparent background
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-                ctx.fillRect(
-                    x - metrics.width / 2 - 2,
-                    lineY - 6,
-                    metrics.width + 4,
-                    10
-                );
-
-                // Text
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
-                ctx.fillText(line, x, lineY);
             });
-        });
 
-        // Draw user point
-        const userX = toCanvasX(userScores.econ);
-        const userY = toCanvasY(userScores.stat);
+            // Draw axis lines
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.lineWidth = 2;
 
-        ctx.fillStyle = 'rgba(239, 68, 68, 1)';
-        ctx.strokeStyle = 'rgba(255, 255, 255, 1)';
-        ctx.lineWidth = 3;
+            // Vertical axis (x=0)
+            ctx.beginPath();
+            ctx.moveTo(toCanvasX(0), toCanvasY(-100));
+            ctx.lineTo(toCanvasX(0), toCanvasY(100));
+            ctx.stroke();
 
-        ctx.beginPath();
-        ctx.arc(userX, userY, 8, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
+            // Horizontal axis (y=0)
+            ctx.beginPath();
+            ctx.moveTo(toCanvasX(-100), toCanvasY(0));
+            ctx.lineTo(toCanvasX(100), toCanvasY(0));
+            ctx.stroke();
 
-        // Draw user label
-        ctx.fillStyle = '#000';
-        ctx.font = 'bold 14px "Noto Sans KR", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('나의 위치', userX, userY - 15);
+            // Draw axis labels
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 12px "Noto Sans KR", sans-serif';
+            ctx.textAlign = 'center';
+
+            // X-axis labels
+            ctx.fillText('평등 (경제적 좌파)', toCanvasX(70), toCanvasY(-100) - 10);
+            ctx.fillText('시장 (경제적 우파)', toCanvasX(-70), toCanvasY(-100) - 10);
+
+            // Y-axis labels
+            ctx.save();
+            ctx.translate(toCanvasX(-100) - 30, toCanvasY(60));
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('개입 (권위주의)', 0, 0);
+            ctx.restore();
+
+            ctx.save();
+            ctx.translate(toCanvasX(-100) - 30, toCanvasY(-60));
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('자유 (자유지상주의)', 0, 0);
+            ctx.restore();
+
+            // Highlight user's ideology region
+            const userIdeologyIndex = ideologies.findIndex(ideology => {
+                return Math.hypot(
+                    userScores.econ - ideology.scores.econ,
+                    userScores.stat - ideology.scores.stat
+                ) === Math.min(...ideologies.map(ide =>
+                    Math.hypot(
+                        userScores.econ - ide.scores.econ,
+                        userScores.stat - ide.scores.stat
+                    )
+                ));
+            });
+
+            if (userIdeologyIndex >= 0) {
+                const cell = voronoi.cellPolygon(userIdeologyIndex);
+                if (cell) {
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
+                    ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
+                    ctx.lineWidth = 3;
+
+                    ctx.beginPath();
+                    cell.forEach((point, j) => {
+                        const x = toCanvasX(point[0]);
+                        const y = toCanvasY(point[1]);
+                        if (j === 0) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    });
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                }
+            }
+
+            // Draw ideology points and labels
+            ideologies.forEach((ideology, i) => {
+                const x = toCanvasX(ideology.scores.econ);
+                const y = toCanvasY(ideology.scores.stat);
+
+                // Draw point
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Draw label with truncated name
+                const nameLines = ideology.name.split('/').map(line => line.trim());
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                ctx.font = '9px "Noto Sans KR", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                // Draw text with background for readability
+                nameLines.forEach((line, lineIndex) => {
+                    const lineY = y + 8 + lineIndex * 10;
+                    const metrics = ctx.measureText(line);
+
+                    // Semi-transparent background
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                    ctx.fillRect(
+                        x - metrics.width / 2 - 2,
+                        lineY - 6,
+                        metrics.width + 4,
+                        10
+                    );
+
+                    // Text
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+                    ctx.fillText(line, x, lineY);
+                });
+            });
+
+            // Draw user point
+            const userX = toCanvasX(userScores.econ);
+            const userY = toCanvasY(userScores.stat);
+
+            ctx.fillStyle = 'rgba(239, 68, 68, 1)';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 1)';
+            ctx.lineWidth = 3;
+
+            ctx.beginPath();
+            ctx.arc(userX, userY, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Draw user label
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 14px "Noto Sans KR", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('나의 위치', userX, userY - 15);
+
+        } catch (error) {
+            console.error('Error drawing Voronoi chart:', error);
+            // Draw fallback error message
+            ctx.fillStyle = '#000';
+            ctx.font = '16px "Noto Sans KR", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('차트 렌더링 오류', size / 2, size / 2);
+            ctx.font = '12px "Noto Sans KR", sans-serif';
+            ctx.fillText('브라우저 콘솔을 확인하세요', size / 2, size / 2 + 25);
+        }
     }
 });
